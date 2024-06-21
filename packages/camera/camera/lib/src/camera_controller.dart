@@ -249,6 +249,7 @@ class CameraController extends ValueNotifier<CameraValue> {
     int? videoBitrate,
     int? audioBitrate,
     this.imageFormatGroup,
+    this.listenToError = false,
   })  : mediaSettings = MediaSettings(
             resolutionPreset: resolutionPreset,
             enableAudio: enableAudio,
@@ -285,6 +286,9 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// When null the imageFormat will fallback to the platforms default.
   final ImageFormatGroup? imageFormatGroup;
 
+  /// Whether to listen on camera error
+  final bool listenToError;
+
   /// The id of a camera that hasn't been initialized.
   @visibleForTesting
   static const int kUninitializedCameraId = -1;
@@ -299,6 +303,7 @@ class CameraController extends ValueNotifier<CameraValue> {
   Future<void>? _initializeFuture;
   StreamSubscription<DeviceOrientationChangedEvent>?
       _deviceOrientationSubscription;
+  StreamSubscription<CameraErrorEvent>? _cameraErrorSubscription;
 
   /// Checks whether [CameraController.dispose] has completed successfully.
   ///
@@ -352,6 +357,18 @@ class CameraController extends ValueNotifier<CameraValue> {
           .then((CameraInitializedEvent event) {
         initializeCompleter.complete(event);
       }));
+
+      if (listenToError) {
+        _cameraErrorSubscription =
+            CameraPlatform.instance.onCameraError(_cameraId).listen((
+                CameraErrorEvent event) {
+              if (_isDisposed) {
+                return;
+              }
+
+              value = value.copyWith(errorDescription: event.description);
+            });
+      }
 
       await CameraPlatform.instance.initializeCamera(
         _cameraId,
@@ -878,6 +895,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       return;
     }
     _unawaited(_deviceOrientationSubscription?.cancel());
+    _unawaited(_cameraErrorSubscription?.cancel());
     _isDisposed = true;
     super.dispose();
     if (_initializeFuture != null) {
